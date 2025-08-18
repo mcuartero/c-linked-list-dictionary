@@ -1,10 +1,10 @@
-#ifndef ELEMENTS_H
-#define ELEMENTS_H
+#ifndef ROW_H
+#define ROW_H
 
 #define MAX_FIELDS 35
 #define MAX_FIELD_LEN 127
 
-struct elements_t {
+typedef struct row_t {
     char *PFI;
     char *EZI_ADD;
     char *SRC_VERIF;
@@ -41,11 +41,17 @@ struct elements_t {
 
     long double x;
     long double y;
-} fields_t;
+} row_t;
 
-struct node_t {
-    fields_t *data;
+typedef struct node_t {
+    row_t *data;
     struct node_t *next;
 }
+
+row_t *create_row(char **fields);
+void free_row(row_t *row);
+
+node_t *create_node(row_t *row);
+void free_list(node_t *head);
 
 #endif

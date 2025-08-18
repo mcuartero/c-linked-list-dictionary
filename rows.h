@@ -49,10 +49,10 @@ typedef struct node_t {
 } node_t;
 
 row_t *parse_row(char *line);
-void free_row(row_t *row);
+node_t *create_node(row_t *row);
 
 void append_node(node_t **head, node_t **tail, node_t *node);
-node_t *create_node(row_t *row);
+void free_row(row_t *row);
 void free_list(node_t *head);
 
 #endif

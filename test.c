@@ -8,7 +8,7 @@ void print_row(const row_t *row);
 void print_list(const struct node_t *head);
 
 int main() {
-    FILE *fp = fopen("tests/dataset_22.csv", "r");
+    FILE *fp = fopen("tests/dataset_2.csv", "r");
     if (!fp) { perror("fopen"); return 1; }
 
     char line[512];
@@ -28,7 +28,7 @@ int main() {
 
     node_t *cur = head;
     while (cur) {
-        print_row_verbose(cur->data);
+        print_row(cur->data);
         cur = cur->next;
     }
 
@@ -66,4 +66,3 @@ void print_list(const node_t *head) {
         cur = cur->next;
     }
 }
-

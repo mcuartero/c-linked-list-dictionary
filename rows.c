@@ -5,15 +5,17 @@
 
 #define DELIM ","
 
-static char *safe_dup(const char *s) {
-    if (!s) return NULL;
-    size_t len = strnlen(s, MAX_FIELD_LEN);  // only copy up to MAX_FIELD_LEN
-    char *copy = malloc(len + 1);            // +1 for null terminator
-    if (!copy) return NULL;
-    memcpy(copy, s, len);
-    copy[len] = '\0';
+static char *dup_string(const char *s) {
+    size_t len = s ? strnlen(s, MAX_FIELD_LEN) : 0; 
+    char *copy = malloc(len + 1);            
+    if (!copy) return NULL;             
+    if (s && len > 0) {
+        memcpy(copy, s, len);
+    }
+    copy[len] = '\0';  
     return copy;
 }
+
 
 row_t *parse_row(char *line) {
     if (!line) return NULL;
@@ -24,10 +26,13 @@ row_t *parse_row(char *line) {
     char *token[MAX_FIELDS] = {0};
     int i = 0;
     char *p = strtok(line, DELIM);
+
     while (p && i < MAX_FIELDS) {
         token[i++] = p;
         p = strtok(NULL, DELIM);
     }
+
+    int num_tokens = i;
 
     char **fields[] = {
         &row->PFI, &row->EZI_ADD, &row->SRC_VERIF, &row->PROPSTATUS,
@@ -41,12 +46,21 @@ row_t *parse_row(char *line) {
         &row->ACCESSTYPE
     };
 
-    for (int j = 0; j < MAX_FIELDS - 2; j++) { 
-        if (token[j]) *fields[j] = safe_dup(token[j]);
+    for (int j = 0; j < MAX_FIELDS - 2; j++) {
+        if (j < num_tokens - 2) {
+            *fields[j] = dup_string(token[j]);
+        } else {
+            *fields[j] = dup_string("");  
+        }
     }
 
-    if (token[MAX_FIELDS - 2]) row->x = strtold(token[MAX_FIELDS - 2], NULL);
-    if (token[MAX_FIELDS - 1]) row->y = strtold(token[MAX_FIELDS - 1], NULL);
+    if (num_tokens >= 2) {
+        row->x = strtold(token[num_tokens - 2], NULL);
+        row->y = strtold(token[num_tokens - 1], NULL);
+    } else {
+        row->x = 0.0;
+        row->y = 0.0;
+    }
 
     return row;
 }

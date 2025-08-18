@@ -1,5 +1,5 @@
-#ifndef ROW_H
-#define ROW_H
+#ifndef READ_H
+#define READ_H
 
 #define MAX_FIELDS 35
 #define MAX_FIELD_LEN 127

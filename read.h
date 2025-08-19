@@ -3,6 +3,7 @@
 
 #define MAX_FIELDS 35
 #define MAX_FIELD_LEN 127
+#define DELIM ","
 
 typedef struct row_t {
     char *PFI;
@@ -50,6 +51,7 @@ typedef struct node_t {
 
 row_t *parse_row(char *line);
 node_t *create_node(row_t *row);
+node_t *read_csv(const char *filename);
 
 void append_node(node_t **head, node_t **tail, node_t *node);
 void free_row(row_t *row);

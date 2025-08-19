@@ -3,8 +3,6 @@
 #include <string.h>
 #include "read.h"
 
-#define DELIM ","
-
 static char *dup_string(const char *s) {
     size_t len = s ? strnlen(s, MAX_FIELD_LEN) : 0; 
     char *copy = malloc(len + 1);            
@@ -16,6 +14,28 @@ static char *dup_string(const char *s) {
     return copy;
 }
 
+node_t *read_csv(const char *filename) {
+    FILE *fp = fopen(filename, "r");
+    if (!fp) return NULL;
+
+    node_t *head = NULL, *tail = NULL;
+    char line[512];
+
+    if (!fgets(line, sizeof(line), fp)) {
+        fclose(fp);
+        return NULL;
+    }
+
+    while (fgets(line, sizeof(line), fp)) {
+        line[strcspn(line, "\r\n")] = '\0';
+        row_t *row = parse_row(line);
+        node_t *node = create_node(row);
+        append_node(&head, &tail, node);
+    }
+
+    fclose(fp);
+    return head;
+}
 
 row_t *parse_row(char *line) {
     if (!line) return NULL;

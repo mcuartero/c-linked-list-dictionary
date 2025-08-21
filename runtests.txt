@@ -1,0 +1,15 @@
+# Line read test - checks single input line
+./dict1 1 tests/dataset_1.csv output.txt < tests/test1.in
+
+# Two line read test - checks handling of additional input line, 
+# highlighting generalisation issues.
+./dict1 1 tests/dataset_2.csv output.txt < tests/test2.in
+
+# Twenty-two line read test - checks handling of duplicates
+./dict1 1 tests/dataset_22.csv output.txt < tests/test22.in
+
+# 1067 line read test - checks handling of scale, includes duplicates
+./dict1 1 tests/dataset_1067.csv output.txt < tests/test1067.in
+
+# Full read test - checks handling of large scale, includes newlines in fields and double quotes in fields.
+./dict1 1 tests/dataset_full.csv matching_results/testfull.out < tests/testfull.in > matching_results/testfull.stdout.out

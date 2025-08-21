@@ -1,19 +1,23 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11 -O2
-
-OBJS = main.o read.o search.o output.o
-
-.PHONY: all clean
-
-all: dict1
+CFLAGS = -Wall -Wextra -std=c99 -g
+OBJS = main.o read.o search.o bit.o
 
 dict1: $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $(OBJS)
+	$(CC) $(CFLAGS) -o dict1 $(OBJS)
 
-main.o: main.c read.h search.h output.h
-read.o: read.c read.h
-search.o: search.c search.h read.h
-output.o: output.c output.h read.h
+main.o: main.c read.h search.h
+	$(CC) $(CFLAGS) -c main.c
+
+read.o: read.c read.h row.h
+	$(CC) $(CFLAGS) -c read.c
+
+search.o: search.c search.h row.h
+	$(CC) $(CFLAGS) -c search.c
+
+bit.o: bit.c bit.h
+	$(CC) $(CFLAGS) -c bit.c
 
 clean:
-	rm -f *.o dict1
+	rm -f dict1 *.o
+
+.PHONY: clean

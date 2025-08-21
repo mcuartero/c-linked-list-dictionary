@@ -1,6 +1,9 @@
 #ifndef ROW_H
 #define ROW_H
 
+#define MAX_FIELDS 35
+#define MAX_FIELD_LEN 127
+
 typedef struct row_t {
     char *PFI;
     char *EZI_ADD;

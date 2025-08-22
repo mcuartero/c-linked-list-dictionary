@@ -18,6 +18,6 @@ bit.o: bit.c bit.h
 	$(CC) $(CFLAGS) -c bit.c
 
 clean:
-	rm -f dict1 *.o
+	rm -f $(OBJ) $(TARGET)
 
 .PHONY: clean

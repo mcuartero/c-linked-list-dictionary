@@ -61,73 +61,90 @@ static void print_record(FILE *out, const row_t *a){
     fprintf(out, "%s: %Lf\n",   HEADERS[34], a->y);
 }
 
+/* Strip newline and carriage return characters from string */
+static void strip_newline(char *str) {
+    size_t n = strlen(str);
+    while (n > 0) {
+        char last = str[n - 1];
+        if (last == '\n' || last == '\r') {
+            n--;
+            str[n] = '\0';
+        } else {
+            break;
+        }
+    }
+}
+
+/* Stage 1 functionality: Search by EZI_ADD */
+static void run_stage1(node_t *list, FILE *fout) {
+    char q[1024];
+    
+    while (fgets(q, sizeof(q), stdin)) {
+        strip_newline(q); // Clean up the query string
+        
+        search_stats_t st;
+        search_by_ezi_add(list, q, &st); // Perform search
+
+        // Write results to output file
+        fprintf(fout, "%s\n", q);
+        if (st.result_count == 0) {
+            fprintf(fout, "NOTFOUND\n");
+        } else {
+            for (unsigned int i = 0; i < st.result_count; i++) {
+                print_record(fout, st.results[i]);
+            }
+        }
+
+        // Print summary to stdout
+        printf("%s --> %u records found - comparisons: b%llu n%u s%u\n",
+               q, st.result_count,
+               (unsigned long long)st.bit_comparisons,
+               st.node_comparisons, st.string_comparisons);
+
+        free(st.results); // Free results array
+    }
+}
+
 int main(int argc, char* argv[]){
-    if(argc != 4) usage(argv[0]);
-    if(strcmp(argv[1], "1") != 0 &&
-       strcmp(argv[1], "2") != 0 &&
-       strcmp(argv[1], "3") != 0) {
+    // Validate command line arguments
+    if (argc != 4) usage(argv[0]);
+    if (strcmp(argv[1], "1") != 0 &&
+        strcmp(argv[1], "2") != 0 &&
+        strcmp(argv[1], "3") != 0) {
         usage(argv[0]);
     }
 
     const char *input_csv = argv[2];
     const char *output_txt = argv[3];
 
-    node_t *list = read_csv(input_csv); // Reading CSV into linked list
-
+    // Read CSV file into linked list
+    node_t *list = read_csv(input_csv);
     if (!list) {
         fprintf(stderr, "Error: Failed to read CSV file or file is empty\n");
         return 1;
     }
 
+    // Open output file
     FILE *fout = fopen(output_txt, "w");
-    if(!fout){ 
+    if (!fout) { 
         perror("open output");  
         free_list(list); 
         return 1; 
     }
 
-    /* Read queries from stdin until EOF, queries can be an empty string */
-    char q[1024];
-    /* If stage is 1 */
-    if(atoi(argv[1]) == 1){
-        while(fgets(q, sizeof(q), stdin)){
-            /* Strip newline(s) */
-            size_t n = strlen(q);
-            /* Keep removing trailing newline or carriage return characters */
-            while (n > 0) {
-                char last = q[n - 1];   // Look at the last character
-
-                if (last == '\n' || last == '\r') {
-                    n--;                // Shrink the string length
-                    q[n] = '\0';        // Put string terminator at the new end
-                } else {
-                    break;              // Stop if it's not \n or \r
-                }
-            }
-
-            search_stats_t st;
-            search_by_ezi_add(list, q, &st);
-
-            /* Output file */
-            fprintf(fout, "%s\n", q);
-            if(st.result_count == 0){
-                fprintf(fout, "NOTFOUND\n");
-            } else{
-                for(unsigned int i=0 ; i < st.result_count ; i++){
-                    print_record(fout, st.results[i]);
-                }
-            }
-
-            /* Stdout summary line */
-            printf("%s --> %u records found - comparisons: b%llu n%u s%u\n",
-                q, st.result_count,
-                (unsigned long long)st.bit_comparisons,
-                st.node_comparisons, st.string_comparisons);
-
-            free(st.results); // Freeing results
-        }
+    int stage = atoi(argv[1]);
+    
+    // Execute appropriate stage
+    switch (stage) {
+        case 1:
+            run_stage1(list, fout);
+            break;
+        // case 2:  
+        //     run_stage2(list, fout)
+        // ...
     }
-    /* Freeing list pointer and closing files */
+
+    // Cleanup
     fclose(fout);
     free_list(list);
     return 0;

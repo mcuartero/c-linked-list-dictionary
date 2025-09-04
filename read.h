@@ -6,9 +6,6 @@
 // Function to read CSV file and convert to linked list
 node_t *read_csv(const char *filename);
 
-// Function to parse a single CSV line into row_t structure
-row_t *parse_row(char *line);
-
 // Function to create a new linked list node
 node_t *create_node(row_t *row);
 

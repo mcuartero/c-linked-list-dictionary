@@ -54,4 +54,6 @@ typedef struct node_t {
     struct node_t *next;    // Pointer to next node in list
 } node_t;
 
+void free_row(row_t *row);
+
 #endif

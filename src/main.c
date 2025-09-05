@@ -6,13 +6,13 @@
 #include "list.h"
 #include "search.h"
 #include "print.h"
+#include "patricia.h"
 
 /* Error message for if the arguments provided are not valid */
 static void usage(const char *p){
     fprintf(stderr, "Usage: %s stageNum <input.csv> <output.txt>\n", p);
     exit(1);
 }
-
 
 /* Stage 1 functionality: Search by EZI_ADD */
 static void run_stage1(node_t *list, FILE *fout) {

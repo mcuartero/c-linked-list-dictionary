@@ -1,36 +1,25 @@
 CC      = gcc
-CFLAGS  = -Wall -Wextra -std=c99 -O2
-OBJS    = main.o read.o search.o bit.o csv.o list.o print.o row.o
+CFLAGS  = -Wall -Wextra -std=c99 -O2 -Iinclude
 
-# Object builds (keep your explicit style)
-dict1: $(OBJS)
-	$(CC) $(CFLAGS) -o bin/dict1 $(OBJS)
+TARGET  = dict1
 
-main.o: main.c read.h search.h print.h list.h row.h bit.h
-	$(CC) $(CFLAGS) -c main.c
+SRC_DIR = src
+OBJ_DIR = build
+SOURCES = $(wildcard $(SRC_DIR)/*.c)
+OBJECTS = $(SOURCES:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
 
-read.o: read.c read.h row.h csv.h list.h
-	$(CC) $(CFLAGS) -c read.c
+all: $(TARGET)
 
-search.o: search.c search.h row.h
-	$(CC) $(CFLAGS) -c search.c
+$(TARGET): $(OBJECTS)
+	$(CC) $(CFLAGS) -o $@ $(OBJECTS)
 
-bit.o: bit.c bit.h
-	$(CC) $(CFLAGS) -c bit.c
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
 
-csv.o: csv.c csv.h row.h
-	$(CC) $(CFLAGS) -c csv.c
-
-list.o: list.c list.h row.h
-	$(CC) $(CFLAGS) -c list.c
-
-print.o: print.c print.h row.h
-	$(CC) $(CFLAGS) -c print.c
-
-row.o: row.c row.h
-	$(CC) $(CFLAGS) -c row.c
+$(OBJ_DIR):
+	mkdir -p $(OBJ_DIR)
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f $(OBJECTS) $(TARGET)
 
 .PHONY: all clean

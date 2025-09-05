@@ -2,17 +2,9 @@
 #include <string.h>
 #include <stdio.h>
 #include "csv.h"
+#include "utils.h"
 
 #define DELIM ','
-
-/* Safely duplicate a string with memory allocation */
-static char *dup_string(const char *s) {
-    if (!s) return NULL;                    // Handle NULL input
-    char *copy = malloc(strlen(s) + 1);     // Allocate memory for copy
-    if (!copy) return NULL;                 // Check allocation success
-    strcpy(copy, s);                        // Copy the string
-    return copy;
-}
 
 /* Split CSV line into tokens, preserving empty fields */
 static int split_csv(char *line, char *tokens[], int max_fields) {

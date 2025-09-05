@@ -1,5 +1,6 @@
 #include <string.h>
 #include "print.h"
+#include "utils.h"
 
 /* Column headers in the exact dataset order */
 static const char *HEADERS[35] = {
@@ -10,20 +11,6 @@ static const char *HEADERS[35] = {
   "HSE_PREF2","HSE_NUM2","HSE_SUF2","DISP_NUM1","ROAD_NAME","ROAD_TYPE",
   "RD_SUF","LOCALITY","STATE","POSTCODE","ACCESSTYPE","x","y"
 };
-
-/* Strip newline and carriage return characters from string */
-void strip_newline(char *str) {
-    size_t n = strlen(str);
-    while (n > 0) {
-        char last = str[n - 1];
-        if (last == '\n' || last == '\r') {
-            n--;
-            str[n] = '\0';
-        } else {
-            break;
-        }
-    }
-}
 
 /* print a single record */
 void print_record(FILE *out, const row_t *a){

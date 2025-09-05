@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include "csv.h"
 
-#define DELIM ","
+#define DELIM ','
 
 /* Safely duplicate a string with memory allocation */
 static char *dup_string(const char *s) {

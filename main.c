@@ -3,6 +3,7 @@
 #include <string.h>
 #include <assert.h>
 #include "read.h"
+#include "list.h"
 #include "search.h"
 #include "print.h"
 

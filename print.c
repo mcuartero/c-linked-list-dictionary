@@ -12,7 +12,7 @@ static const char *HEADERS[35] = {
 };
 
 /* Strip newline and carriage return characters from string */
-static void strip_newline(char *str) {
+void strip_newline(char *str) {
     size_t n = strlen(str);
     while (n > 0) {
         char last = str[n - 1];
@@ -25,8 +25,8 @@ static void strip_newline(char *str) {
     }
 }
 
-/* print one record as: --> FIELD: value || FIELD: value ... */
-static void print_record(FILE *out, const row_t *a){
+/* print a single record */
+void print_record(FILE *out, const row_t *a){
     fprintf(out, "--> ");
     fprintf(out, "%s: %s || ",  HEADERS[0],  a->PFI);
     fprintf(out, "%s: %s || ",  HEADERS[1],  a->EZI_ADD);

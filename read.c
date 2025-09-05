@@ -3,6 +3,7 @@
 #include <string.h>
 #include "read.h"
 #include "csv.h"
+#include "list.h"
 
 /* Read CSV file and convert to linked list */
 node_t *read_csv(const char *filename) {

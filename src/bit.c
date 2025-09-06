@@ -1,13 +1,11 @@
+#include <assert.h>
 #include "bit.h"
 
 /* Number of bits in a single character. */
 #define BITS_PER_BYTE 8
 
-/* Helper function. Gets the bit at bitIndex from the string s. */
-static int getBit(char *s, unsigned int bitIndex);
-
-static int getBit(char *s, unsigned int bitIndex){
-    assert(s && bitIndex >= 0);
+static inline int getBit(char *s, unsigned int bitIndex){
+    assert(s);
     unsigned int byte = bitIndex / BITS_PER_BYTE;
     unsigned int indexFromLeft = bitIndex % BITS_PER_BYTE;
     /* 

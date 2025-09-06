@@ -14,6 +14,6 @@ unsigned int first_diff_bit(const char *left,
 
 int min(int a, int b, int c);
 
-int editDistance(const char *s1, const char *s2, int n, int m);
+int editDistance(char *str1, char *str2, int n, int m);
 
 #endif  // UTILS_H

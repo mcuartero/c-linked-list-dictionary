@@ -54,7 +54,46 @@ static void run_stage1(node_t *list, FILE *fout) {
     }
 }
 
+/* Stage 2 functionality: Search by EZI_ADD using Patricia tree */
 static void run_stage2(node_t *list, FILE *fout) {
+    // Build Patricia tree from the linked list
+    patricia_tree_t *tree = create_patricia_tree();
+    if (!tree) {
+        fprintf(stderr, "Error: Failed to create Patricia tree\n");
+        return;
+    }
+    
+    // Insert all records into the Patricia tree
+    node_t *current = list;
+    while (current) {
+        if (current->data && current->data->EZI_ADD) {
+            insert_into_patricia(tree, current->data->EZI_ADD, current->data);
+        }
+        current = current->next;
+    }
+    
+    char q[1024];
+    
+    while (fgets(q, sizeof(q), stdin)) {
+        strip_newline(q); // Clean up the query string
+        
+        search_stats_t st;
+        search_patricia(tree, q, &st, 1); // Perform search with edit distance
+        
+        // Write results to output file
+        fprintf(fout, "%s\n", q);
+        print_results(fout, &st);
+        
+        // Print summary to stdout
+        printf("%s --> %u records found - comparisons: b%llu n%u s%u\n",
+               q, st.result_count,
+               (unsigned long long)st.bit_comparisons,
+               st.node_comparisons, st.string_comparisons);
+        
+        free(st.results); // Free results array
+    }
+    
+    free_patricia_tree(tree);
 }
 
 int main(int argc, char* argv[]){

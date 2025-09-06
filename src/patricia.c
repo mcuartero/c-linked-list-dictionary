@@ -220,6 +220,7 @@ static void push_rows_of_key(pnode_t *n, const char *key, search_stats_t *out) {
 /* ------------------------------------------------------------------ */
 /* Search API                                                          */
 /* ------------------------------------------------------------------ */
+
 void search_patricia(patricia_tree_t *t, const char *query,
                      search_stats_t *out, int enable_edit_distance)
 {
@@ -294,5 +295,6 @@ void search_patricia(patricia_tree_t *t, const char *query,
     collect_best_under(mismatch_node, query, &acc);
     if (!acc.best_key) return;
 
+    /* Push all rows for chosen key */
     push_rows_of_key(mismatch_node, acc.best_key, out);
 }

@@ -223,7 +223,7 @@ static void push_rows_of_key(pnode_t *n, const char *key, search_stats_t *out) {
 void search_patricia(patricia_tree_t *t, const char *query,
                      search_stats_t *out, int enable_edit_distance)
 {
-    /* Reset stats/result buffer like your Stage 1 search. */
+    /* reset stats/results */
     out->results = NULL;
     out->result_count = 0;
     out->capacity = 0;
@@ -231,66 +231,68 @@ void search_patricia(patricia_tree_t *t, const char *query,
     out->node_comparisons = 0U;
     out->string_comparisons = 0U;
 
-    if (!t || !t->root || !query) {
-        return; /* NOTFOUND; caller prints */
-    }
+    if (!t || !t->root || !query) return;
 
     pnode_t *cur = t->root;
     pnode_t *last_internal = NULL;
 
-    /* Walk down the trie by bits until a leaf or missing child. */
+    unsigned long long path_bits = 0ULL; /* decision bits counted while descending */
+
+    enum { OUTCOME_UNKNOWN, OUTCOME_EXACT, OUTCOME_INTERNAL_MISMATCH, OUTCOME_LEAF_MISMATCH }
+        outcome = OUTCOME_UNKNOWN;
+
     for (;;) {
         out->node_comparisons++;
+
+        /* Leaf? do the leaf equality/mismatch check (bit charging via first_diff_bit) */
         if (cur->leaf) {
-            /* At a leaf: check exact match (count bits to first diff). */
             out->string_comparisons++;
             unsigned int diff = first_diff_bit_msb(query, cur->leaf->key, &out->bit_comparisons);
-            if (diff == UINT_MAX) {
-                /* Exact match → push all rows for this key. */
-                for (unsigned i = 0; i < cur->leaf->count; ++i) {
-                    push_result(out, cur->leaf->rows[i]);
-                }
-                return;
+
+            /* remove bits we already charged along the path */
+            if (out->bit_comparisons >= path_bits) {
+                out->bit_comparisons -= path_bits;
+            } else {
+                out->bit_comparisons = 0;
             }
-            /* Not exact: break to “closest” selection below. */
+
+            out->bit_comparisons++;                 // NEW: count the decisive leaf bit (mismatch or '\0')
+
+            if (diff == UINT_MAX) {
+                for (unsigned i = 0; i < cur->leaf->count; ++i) push_result(out, cur->leaf->rows[i]);
+                outcome = OUTCOME_EXACT;
+            } else {
+                outcome = OUTCOME_LEAF_MISMATCH;
+            }
             break;
         }
 
+        /* Internal node: ALWAYS charge the decision bit, even if the branch is missing */
         last_internal = cur;
-        /* One bit comparison to choose branch */
-        out->bit_comparisons++;
         int b = get_bit_msb((const unsigned char*)query, cur->split_bit);
-
-        if (!cur->child[b]) {
-            /* Mismatch at this branching bit. */
-            cur = NULL; /* signal mismatch; closest match under last_internal */
+        out->bit_comparisons++;    /* count this decision bit */
+        path_bits++;               /* remember we charged it */
+        if (cur->child[b]) {
+            cur = cur->child[b];
+        } else {
+            outcome = OUTCOME_INTERNAL_MISMATCH;
+            cur = NULL;
             break;
         }
-        cur = cur->child[b];
     }
 
-    /* If we’re here, exact not found. If edit distance disabled, we’re done. */
-    if (!enable_edit_distance) {
-        return; /* NOTFOUND */
-    }
+    /* Exact match done (records already pushed) */
+    if (outcome == OUTCOME_EXACT) return;
 
-    /* Determine the subtree to search for closest:
-     * - If we landed on a leaf (cur is leaf), the mismatch node is the parent.
-     * - Else (cur==NULL), mismatch happened at last_internal. */
-    pnode_t *mismatch_node = NULL;
-    if (cur && cur->leaf) {
-        mismatch_node = last_internal ? last_internal : t->root;
-    } else {
-        mismatch_node = last_internal ? last_internal : t->root;
-    }
+    /* If closest-match is off, we’re done (NOTFOUND) */
+    if (!enable_edit_distance) return;
 
-    best_accum_t acc = {0};
+    /* Choose subtree for closest-match: last internal reached (or root fallback) */
+    pnode_t *mismatch_node = last_internal ? last_internal : t->root;
+
+    best_accum_t acc = (best_accum_t){0};
     collect_best_under(mismatch_node, query, &acc);
-    if (!acc.best_key) {
-        /* No candidates in subtree → nothing to return. */
-        return;
-    }
+    if (!acc.best_key) return;
 
-    /* Add all rows corresponding to the chosen best_key */
     push_rows_of_key(mismatch_node, acc.best_key, out);
 }

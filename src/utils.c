@@ -30,46 +30,57 @@ void strip_newline(char *str) {
     }
 }
 
-unsigned int first_diff_bit(const char *left,
-                            const char *right,
-                            unsigned long long *bit_count)
-{
-    // Handle NULL pointers
-    if (!left || !right) {
-        return 0;
-    }
-    
-    size_t byte_index = 0;
+static inline int msb_bit(unsigned char byte, int bit_from_msb /*0..7*/) {
+    return (byte >> (7 - bit_from_msb)) & 1;
+}
 
-    for (;;) {
-        unsigned char lb = (unsigned char)left[byte_index];
-        unsigned char rb = (unsigned char)right[byte_index];
+/* Returns first differing bit index (MSB-first within each byte).
+   If strings are identical (including the NUL), returns UINT_MAX.
+   If bit_count != NULL, it is incremented by the number of bits that
+   actually MATCHED before the first difference. It does NOT include:
+     - the differing bit itself, and
+     - any bits in the NUL byte when strings are identical. */
+unsigned int first_diff_bit(const char *a, const char *b, unsigned long long *bit_count) {
+    assert(a && b);
+    const unsigned char *pa = (const unsigned char *)a;
+    const unsigned char *pb = (const unsigned char *)b;
 
-        if (lb == rb) {
-            if (bit_count) *bit_count += 8ULL;
-            if (lb == 0) {
-                /* both ended → identical */
+    unsigned long long matched_bits = 0;
+    size_t i = 0;
+
+    for (;; ++i) {
+        unsigned char ab = pa[i];
+        unsigned char bb = pb[i];
+
+        if (ab == bb) {
+            if (ab == 0) {
+                /* Both NUL → identical. Do NOT charge the NUL byte's 8 bits. */
+                if (bit_count) *bit_count += matched_bits;
                 return UINT_MAX;
             }
-            byte_index++;
+            /* Bytes equal and non-zero → all 8 bits matched */
+            matched_bits += 8ULL;
             continue;
         }
 
-        for (int bit = 7; bit >= 0; --bit) {
-            if (bit_count) (*bit_count)++;
-            int bl = (lb >> bit) & 1;
-            int br = (rb >> bit) & 1;
-            if (bl != br) {
-                unsigned int bit_in_byte = (unsigned int)(7 - bit);
-                return (unsigned int)(byte_index * 8 + bit_in_byte);
+        /* Bytes differ: find first differing bit (MSB-first) */
+        for (int k = 0; k < 8; ++k) {
+            int abit = msb_bit(ab, k);
+            int bbit = msb_bit(bb, k);
+            if (abit != bbit) {
+                /* Charge only the bits that matched BEFORE this differing bit */
+                matched_bits += (unsigned long long)k;
+                if (bit_count) *bit_count += matched_bits;
+                /* Return global bit index (byte offset * 8 + bit offset from MSB) */
+                return (unsigned int)(i * 8U + k);
             }
         }
 
-        return (unsigned int)(byte_index * 8);
+        /* Should never reach here; we would have found a differing bit above. */
     }
 }
 
-/* Returns min of 3 integers 
+/* Returns min of 3 integers
     reference: https://www.geeksforgeeks.org/edit-distance-in-c/ */
 int min(int a, int b, int c) {
     if (a < b) {

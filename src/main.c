@@ -14,6 +14,16 @@ static void usage(const char *p){
     exit(1);
 }
 
+static void print_results(FILE *out, const search_stats_t *st) {
+    if (st->result_count == 0) {
+        fprintf(out, "NOTFOUND\n");
+        return;
+    }
+    for (unsigned i = 0; i < st->result_count; ++i) {
+        print_record(out, st->results[i]);
+    }
+}
+
 /* Stage 1 functionality: Search by EZI_ADD */
 static void run_stage1(node_t *list, FILE *fout) {
     char q[1024];
@@ -44,12 +54,14 @@ static void run_stage1(node_t *list, FILE *fout) {
     }
 }
 
+static void run_stage2(node_t *list, FILE *fout) {
+}
+
 int main(int argc, char* argv[]){
     // Validate command line arguments
     if (argc != 4) usage(argv[0]);
     if (strcmp(argv[1], "1") != 0 &&
-        strcmp(argv[1], "2") != 0 &&
-        strcmp(argv[1], "3") != 0) {
+        strcmp(argv[1], "2") != 0) {
         usage(argv[0]);
     }
 
@@ -78,9 +90,12 @@ int main(int argc, char* argv[]){
         case 1:
             run_stage1(list, fout);
             break;
-        // case 2:  
-        //     run_stage2(list, fout)
-        // ...
+        case 2:
+            run_stage2(list, fout);
+            break;
+        default:
+            usage(argv[0]);
+            break;
     }
 
     // Cleanup

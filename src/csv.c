@@ -67,4 +67,3 @@ row_t *parse_row(char *line) {
 
     return row;
 }
-

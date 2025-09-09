@@ -2,20 +2,26 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+
 #include "read.h"
 #include "list.h"
 #include "search.h"
 #include "print.h"
-#include "patricia.h"
+#include "utils.h"
 
-/* Error message for if the arguments provided are not valid */
-static void usage(const char *p){
-    fprintf(stderr, "Usage: %s stageNum <input.csv> <output.txt>\n", p);
+#ifdef ENABLE_PATRICIA
+#include "patricia.h"
+#endif
+
+static void usage(const char *prog){
+    fprintf(stderr, "Usage: %s <stage> <input.csv> <output.txt>\n", prog);
     exit(1);
 }
 
+#ifndef ENABLE_PATRICIA
+#else
 static void print_results(FILE *out, const search_stats_t *st) {
-    if (st->result_count == 0) {
+    if (!st || st->result_count == 0) {
         fprintf(out, "NOTFOUND\n");
         return;
     }
@@ -23,18 +29,17 @@ static void print_results(FILE *out, const search_stats_t *st) {
         print_record(out, st->results[i]);
     }
 }
+#endif
 
-/* Stage 1 functionality: Search by EZI_ADD */
 static void run_stage1(node_t *list, FILE *fout) {
     char q[1024];
-    
     while (fgets(q, sizeof(q), stdin)) {
-        strip_newline(q); // Clean up the query string
-        
-        search_stats_t st;
-        search_by_ezi_add(list, q, &st); // Perform search
+        strip_newline(q);
 
-        // Write results to output file
+        search_stats_t st;
+        search_by_ezi_add(list, q, &st);
+
+        /* file output */
         fprintf(fout, "%s\n", q);
         if (st.result_count == 0) {
             fprintf(fout, "NOTFOUND\n");
@@ -44,100 +49,97 @@ static void run_stage1(node_t *list, FILE *fout) {
             }
         }
 
-        // Print summary to stdout
+        /* stdout summary */
         printf("%s --> %u records found - comparisons: b%llu n%u s%u\n",
                q, st.result_count,
                (unsigned long long)st.bit_comparisons,
                st.node_comparisons, st.string_comparisons);
 
-        free(st.results); // Free results array
+        free(st.results);
     }
 }
 
-/* Stage 2 functionality: Search by EZI_ADD using Patricia tree */
+#ifdef ENABLE_PATRICIA
+
 static void run_stage2(node_t *list, FILE *fout) {
-    // Build Patricia tree from the linked list
     patricia_tree_t *tree = create_patricia_tree();
     if (!tree) {
-        fprintf(stderr, "Error: Failed to create Patricia tree\n");
+        fprintf(stderr, "Error: could not create Patricia tree\n");
         return;
     }
-    
-    // Insert all records into the Patricia tree
-    node_t *current = list;
-    while (current) {
-        if (current->data && current->data->EZI_ADD) {
-            insert_into_patricia(tree, current->data->EZI_ADD, current->data);
+
+    /* build tree from linked list (preserve order for duplicates) */
+    for (node_t *cur = list; cur; cur = cur->next) {
+        if (cur->data && cur->data->EZI_ADD) {
+            insert_into_patricia(tree, cur->data->EZI_ADD, cur->data);
         }
-        current = current->next;
     }
-    
+
     char q[1024];
-    
     while (fgets(q, sizeof(q), stdin)) {
-        strip_newline(q); // Clean up the query string
-        
+        strip_newline(q);
+
         search_stats_t st;
-        search_patricia(tree, q, &st, 1); // Perform search with edit distance
-        
-        // Write results to output file
+        /* enable_edit_distance = 1 */
+        search_patricia(tree, q, &st, 1);
+
+        /* file output */
         fprintf(fout, "%s\n", q);
         print_results(fout, &st);
-        
-        // Print summary to stdout
+
+        /* stdout summary */
         printf("%s --> %u records found - comparisons: b%llu n%u s%u\n",
                q, st.result_count,
                (unsigned long long)st.bit_comparisons,
                st.node_comparisons, st.string_comparisons);
-        
-        free(st.results); // Free results array
+
+        free(st.results);
     }
-    
+
     free_patricia_tree(tree);
 }
+#endif
 
-int main(int argc, char* argv[]){
-    // Validate command line arguments
+int main(int argc, char *argv[]) {
     if (argc != 4) usage(argv[0]);
-    if (strcmp(argv[1], "1") != 0 &&
-        strcmp(argv[1], "2") != 0) {
+
+#ifndef ENABLE_PATRICIA
+    if (strcmp(argv[1], "1") != 0) {
+        fprintf(stderr, "This build excludes Patricia (stage 2). Use dict2.\n");
         usage(argv[0]);
     }
+#else
+    if (strcmp(argv[1], "1") != 0 && strcmp(argv[1], "2") != 0) {
+        usage(argv[0]);
+    }
+#endif
 
-    const char *input_csv = argv[2];
+    const char *input_csv  = argv[2];
     const char *output_txt = argv[3];
 
-    // Read CSV file into linked list
     node_t *list = read_csv(input_csv);
     if (!list) {
-        fprintf(stderr, "Error: Failed to read CSV file or file is empty\n");
+        fprintf(stderr, "Error: failed to read CSV or file is empty\n");
         return 1;
     }
 
-    // Open output file
     FILE *fout = fopen(output_txt, "w");
-    if (!fout) { 
-        perror("open output");  
-        free_list(list); 
-        return 1; 
+    if (!fout) {
+        perror("open output");
+        free_list(list);
+        return 1;
     }
 
-    int stage = atoi(argv[1]);
-    
-    // Execute appropriate stage
-    switch (stage) {
-        case 1:
-            run_stage1(list, fout);
-            break;
-        case 2:
-            run_stage2(list, fout);
-            break;
-        default:
-            usage(argv[0]);
-            break;
+#ifndef ENABLE_PATRICIA
+    run_stage1(list, fout);
+#else
+    if (strcmp(argv[1], "1") == 0) {
+        run_stage1(list, fout);
+    } else {
+        run_stage2(list, fout);
     }
+#endif
 
-    // Cleanup
     fclose(fout);
     free_list(list);
     return 0;

@@ -30,6 +30,8 @@ all: dict1 dict2
 dict1: $(DICT1_OBJS)
 	$(CC) $(CFLAGS) -o $@ $^
 
+# Enable Patricia for dict2
+dict2: CFLAGS += -DENABLE_PATRICIA
 dict2: $(DICT2_OBJS)
 	$(CC) $(CFLAGS) -o $@ $^
 
@@ -40,6 +42,6 @@ $(OBJ_DIR):
 	mkdir -p $@
 
 clean:
-	rm -rf $(OBJ_DIR) dict1 dict2
+	rm -rf $(OBJ_DIR) dict1 dict2 output.txt
 
 .PHONY: all clean

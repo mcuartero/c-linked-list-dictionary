@@ -4,7 +4,7 @@
 /* Number of bits in a single character. */
 #define BITS_PER_BYTE 8
 
-static inline int getBit(char *s, unsigned int bitIndex){
+int getBit(char *s, unsigned int bitIndex){
     assert(s);
     unsigned int byte = bitIndex / BITS_PER_BYTE;
     unsigned int indexFromLeft = bitIndex % BITS_PER_BYTE;

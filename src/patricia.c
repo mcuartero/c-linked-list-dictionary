@@ -1,113 +1,154 @@
+#include <assert.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
-#include <limits.h>
-#include <assert.h>
 
 #include "patricia.h"
-#include "utils.h"     /* dup_string, first_diff_bit, editDistance */
-#include "search.h"    /* push_result */
+#include "bit.h"     /* int getBit(char *s, unsigned int bitIndex); */
+#include "utils.h"   /* editDistance(...) */
+#include "search.h"  /* push_result(...), strcmp_bits_firstdiff(...) */
 #include "row.h"
 
-/* ------------------------------------------------------------------ */
-/* Bit helpers (MSB-first per byte, includes the '\0' terminator)     */
-/* ------------------------------------------------------------------ */
-static int get_bit_msb(const unsigned char *s, unsigned int bit_index) {
-    unsigned int byte = bit_index / 8U;
-    unsigned int inbyte = bit_index % 8U; /* 0..7 from MSB */
-    unsigned char ch = s[byte];           /* reading past strlen lands on '\0' */
-    unsigned int shift = 7U - inbyte;
-    return (ch >> shift) & 1U;
-}
-
-/* First differing bit (MSB-first). If identical, returns UINT_MAX.
- * Also optionally increments bit_count for the number of bits compared. */
-static unsigned int first_diff_bit_msb(const char *a, const char *b,
-                                       unsigned long long *bit_count) {
-    /* Use your provided helper for consistency with counters. */
-    return first_diff_bit(a, b, bit_count);
-}
-
-/* ------------------------------------------------------------------ */
-/* Node / Tree definitions (names prefixed to avoid clash with row.h)  */
-/* ------------------------------------------------------------------ */
-typedef struct p_leaf_bucket {
-    row_t   **rows;
-    unsigned count;
-    unsigned cap;
-    char    *key;      /* exact key for this leaf */
-} p_leaf_bucket_t;
-
+/* =========================
+ * Internal node definition
+ * ========================= */
 typedef struct pnode {
-    unsigned int split_bit;   /* internal node split bit (MSB index) */
-    struct pnode *child[2];   /* 0-branch and 1-branch */
-    p_leaf_bucket_t *leaf;    /* non-NULL means this is a leaf */
+    /* Internal-node fields */
+    unsigned int bitIndex;       /* branching bit index (MSB-first across bytes) */
+    struct pnode *left;          /* bit = 0  */
+    struct pnode *right;         /* bit = 1  */
+
+    /* Leaf fields */
+    int          is_leaf;        /* 1 if this node is a leaf */
+    char        *key;            /* leaf: exact key (EZI_ADD) */
+    row_t      **rows;           /* leaf: dynamic array of records */
+    unsigned     count;          /* leaf: number of records */
+    unsigned     cap;            /* leaf: capacity of rows[] */
 } pnode_t;
 
 struct patricia_tree {
     pnode_t *root;
 };
 
-/* ------------------------------------------------------------------ */
-/* Small utilities                                                     */
-/* ------------------------------------------------------------------ */
-static pnode_t *new_node_internal(unsigned int split_bit) {
+/* =========================
+ * Small utilities
+ * ========================= */
+
+static char *pt_strdup(const char *s) {
+    size_t n = strlen(s) + 1;
+    char *p = (char*)malloc(n);
+    assert(p);
+    memcpy(p, s, n);
+    return p;
+}
+
+static pnode_t *new_leaf(const char *key, row_t *row) {
     pnode_t *n = (pnode_t*)calloc(1, sizeof(*n));
     assert(n);
-    n->split_bit = split_bit;
-    n->child[0] = n->child[1] = NULL;
-    n->leaf = NULL;
+    n->is_leaf = 1;
+    n->key = pt_strdup(key);
+    n->cap = 2;
+    n->rows = (row_t**)malloc(n->cap * sizeof(*n->rows));
+    assert(n->rows);
+    n->rows[n->count++] = row;
     return n;
 }
 
-static p_leaf_bucket_t *new_leaf_bucket(const char *key) {
-    p_leaf_bucket_t *b = (p_leaf_bucket_t*)calloc(1, sizeof(*b));
-    assert(b);
-    b->key = dup_string(key);
-    assert(b->key);
-    return b;
-}
-
-static pnode_t *new_node_leaf(const char *key, row_t *row) {
+static pnode_t *new_internal(unsigned int bitIndex, pnode_t *a0, pnode_t *a1) {
     pnode_t *n = (pnode_t*)calloc(1, sizeof(*n));
     assert(n);
-    n->split_bit = UINT_MAX; /* sentinel for leaf */
-    n->leaf = new_leaf_bucket(key);
-    /* push first row */
-    n->leaf->cap = 2;
-    n->leaf->rows = (row_t**)malloc(n->leaf->cap * sizeof(row_t*));
-    assert(n->leaf->rows);
-    n->leaf->rows[n->leaf->count++] = row;
+    n->bitIndex = bitIndex;
+    n->left  = a0;
+    n->right = a1;
+    n->is_leaf = 0;
     return n;
 }
 
-static void leaf_push_row(p_leaf_bucket_t *b, row_t *row) {
-    if (b->count == b->cap) {
-        b->cap = b->cap ? b->cap * 2 : 2;
-        b->rows = (row_t**)realloc(b->rows, b->cap * sizeof(row_t*));
-        assert(b->rows);
+static void leaf_push_row(pnode_t *leaf, row_t *row) {
+    assert(leaf && leaf->is_leaf);
+    if (leaf->count == leaf->cap) {
+        leaf->cap = leaf->cap ? leaf->cap * 2U : 2U;
+        leaf->rows = (row_t**)realloc(leaf->rows, leaf->cap * sizeof(*leaf->rows));
+        assert(leaf->rows);
     }
-    b->rows[b->count++] = row;
+    leaf->rows[leaf->count++] = row;
 }
 
 static void free_node(pnode_t *n) {
     if (!n) return;
-    free_node(n->child[0]);
-    free_node(n->child[1]);
-    if (n->leaf) {
-        free(n->leaf->key);
-        free(n->leaf->rows);
-        free(n->leaf);
+    free_node(n->left);
+    free_node(n->right);
+    if (n->is_leaf) {
+        free(n->rows);
+        free(n->key);
     }
     free(n);
 }
 
-/* ------------------------------------------------------------------ */
-/* Tree API                                                            */
-/* ------------------------------------------------------------------ */
+/* Push all rows of a leaf into results (preserve file order) */
+static void push_leaf_records(search_stats_t *out, const pnode_t *leaf) {
+    assert(leaf && leaf->is_leaf);
+    for (unsigned i = 0; i < leaf->count; ++i) {
+        push_result(out, leaf->rows[i]);
+    }
+}
+
+/* Find first differing bit index between two C strings (MSB-first across bytes).
+   If identical (including '\0'), return UINT_MAX. */
+static unsigned int first_diff_bit_index(const char *a, const char *b) {
+    const unsigned char *pa = (const unsigned char*)a;
+    const unsigned char *pb = (const unsigned char*)b;
+    unsigned int bitIndex = 0;
+    for (;;) {
+        unsigned char ca = *pa++;
+        unsigned char cb = *pb++;
+        if (ca == cb) {
+            bitIndex += 8;
+            if (ca == 0) return UINT_MAX; /* identical including '\0' */
+            continue;
+        }
+        unsigned char x = (unsigned char)(ca ^ cb);
+        for (int i = 7; i >= 0; --i) {
+            if (x & (1u << i)) {
+                return bitIndex + (unsigned)(7 - i); /* 0-based global bit index */
+            }
+        }
+    }
+}
+
+/* Try to find the node that splits exactly at target_bit along 'key's path. */
+static pnode_t *find_node_for_bit_exact(pnode_t *root, const char *key, unsigned int target_bit) {
+    pnode_t *cur = root;
+    while (cur && !cur->is_leaf) {
+        if (cur->bitIndex == target_bit) return cur;
+        int b = getBit((char*)key, cur->bitIndex);
+        cur = (b == 0) ? cur->left : cur->right;
+    }
+    return NULL;
+}
+
+/* Find closest ancestor on key-path with bitIndex < target_bit (handles compression). */
+static pnode_t *find_closest_ancestor_lt_bit(pnode_t *root, const char *key, unsigned int target_bit) {
+    pnode_t *prev = NULL;
+    pnode_t *cur  = root;
+    while (cur && !cur->is_leaf) {
+        if (cur->bitIndex >= target_bit) {
+            return prev ? prev : root;
+        }
+        prev = cur;
+        int b = getBit((char*)key, cur->bitIndex);
+        cur = (b == 0) ? cur->left : cur->right;
+    }
+    return prev ? prev : root;
+}
+
+/* =========================
+ * Create / Free
+ * ========================= */
+
 patricia_tree_t *create_patricia_tree(void) {
     patricia_tree_t *t = (patricia_tree_t*)calloc(1, sizeof(*t));
     assert(t);
-    t->root = NULL;
     return t;
 }
 
@@ -117,109 +158,111 @@ void free_patricia_tree(patricia_tree_t *t) {
     free(t);
 }
 
-/* Insert key => row preserving duplicate order. */
+/* =========================
+ * Insert
+ * ========================= */
+
 void insert_into_patricia(patricia_tree_t *t, const char *key, row_t *row) {
     assert(t && key && row);
 
     if (!t->root) {
-        t->root = new_node_leaf(key, row);
+        t->root = new_leaf(key, row);
         return;
     }
 
-    /* Walk down by bits until a leaf or missing branch. */
+    // 1) Descend to landing leaf (as you already do)
     pnode_t *cur = t->root;
+    while (cur && !cur->is_leaf) {
+        int b = getBit((char*)key, cur->bitIndex);
+        cur = (b == 0) ? cur->left : cur->right;
+    }
+    if (!cur) { t->root = new_leaf(key, row); return; }
+
+    // 2) Duplicate key? append
+    if (strcmp(cur->key, key) == 0) {
+        leaf_push_row(cur, row);
+        return;
+    }
+
+    // 3) Find first differing bit (through '\0')
+    unsigned int split = first_diff_bit_index(cur->key, key);
+    if (split == UINT_MAX) {
+        // strings equal by bits (shouldn't happen because strcmp != 0), but be safe
+        leaf_push_row(cur, row);
+        return;
+    }
+
+    // 4) Re-walk from root to find correct insertion point:
+    //    Find parent s.t. parent->bitIndex < split, and next node (where) has bitIndex >= split or is a leaf.
     pnode_t *parent = NULL;
-    int which_from_parent = -1;
+    pnode_t *where  = t->root;
+    while (where && !where->is_leaf && where->bitIndex < split) {
+        parent = where;
+        int b = getBit((char*)key, where->bitIndex);
+        where = (b == 0) ? where->left : where->right;
+    }
 
-    for (;;) {
-        if (cur->leaf) {
-            /* Leaf: either same key (duplicate) or we need to split. */
-            unsigned int diff = first_diff_bit_msb(cur->leaf->key, key, NULL);
-            if (diff == UINT_MAX) {
-                /* exact same key → append row in order */
-                leaf_push_row(cur->leaf, row);
-                return;
-            }
-            /* Create an internal node at the first differing bit. */
-            pnode_t *internal = new_node_internal(diff);
+    // 5) Create new leaf for the incoming key
+    pnode_t *newleaf = new_leaf(key, row);
 
-            int bit_old = get_bit_msb((const unsigned char*)cur->leaf->key, diff);
-            int bit_new = get_bit_msb((const unsigned char*)key, diff);
+    // 6) Create new internal node at 'split'
+    pnode_t *branch = new_internal(split, NULL, NULL);
 
-            pnode_t *newleaf = new_node_leaf(key, row);
+    // Decide child sides by the NEW key’s bit at split (simplest & mirrors descent).
+    if (getBit((char*)key, split) == 0) {
+        branch->left  = newleaf;
+        branch->right = where;
+    } else {
+        branch->left  = where;
+        branch->right = newleaf;
+    }
 
-            internal->child[bit_old] = cur;
-            internal->child[bit_new] = newleaf;
-
-            /* Hook into parent or set as root */
-            if (!parent) {
-                t->root = internal;
-            } else {
-                parent->child[which_from_parent] = internal;
-            }
-            return;
-        }
-
-        /* Internal node: branch by split bit. */
-        int b = get_bit_msb((const unsigned char*)key, cur->split_bit);
-        parent = cur;
-        which_from_parent = b;
-
-        if (!cur->child[b]) {
-            /* Create a fresh leaf at this branch. */
-            cur->child[b] = new_node_leaf(key, row);
-            return;
-        }
-        cur = cur->child[b];
+    // 7) Hook 'branch' into the tree
+    if (!parent) {
+        // Inserted above old root
+        t->root = branch;
+    } else {
+        if (getBit((char*)key, parent->bitIndex) == 0) parent->left  = branch;
+        else                                           parent->right = branch;
     }
 }
 
-/* ------------------------------------------------------------------ */
-/* “Closest match” collection and selection                            */
-/* ------------------------------------------------------------------ */
-typedef struct best_accum {
-    const char *best_key;  /* do not free; points into leaf->key */
+/* =========================
+ * DFS for closest match (no node counting)
+ * ========================= */
+
+typedef struct {
+    const char *best_key;
+    pnode_t    *best_leaf;
     int         best_dist;
 } best_accum_t;
 
-static void pick_best(const char *query, const char *candidate, best_accum_t *acc) {
-    int d = editDistance((char*)query, (char*)candidate,
-                         (int)strlen(query), (int)strlen(candidate));
-    if (acc->best_key == NULL || d < acc->best_dist ||
-        (d == acc->best_dist && strcmp(candidate, acc->best_key) < 0)) {
-        acc->best_key = candidate;
-        acc->best_dist = d;
-    }
-}
-
-static void collect_best_under(pnode_t *n, const char *query, best_accum_t *acc) {
+/* Enumerate candidates under n; DO NOT bump out->node_comparisons here.
+   Choose minimum edit distance; break ties by alphabetical order. */
+static void dfs_best_under(pnode_t *n, const char *query,
+                           best_accum_t *acc, search_stats_t *out)
+{
     if (!n) return;
-    if (n->leaf) {
-        pick_best(query, n->leaf->key, acc);
-        return;
-    }
-    collect_best_under(n->child[0], query, acc);
-    collect_best_under(n->child[1], query, acc);
-}
 
-/* After we decide the winning key, push all rows of that key into results. */
-static void push_rows_of_key(pnode_t *n, const char *key, search_stats_t *out) {
-    if (!n) return;
-    if (n->leaf) {
-        if (strcmp(n->leaf->key, key) == 0) {
-            for (unsigned i = 0; i < n->leaf->count; ++i) {
-                push_result(out, n->leaf->rows[i]);
-            }
+    if (n->is_leaf) {
+        int d = editDistance((char*)query, (char*)n->key,
+                             (int)strlen(query), (int)strlen(n->key));
+        if (acc->best_leaf == NULL ||
+            d < acc->best_dist ||
+            (d == acc->best_dist && strcmp(n->key, acc->best_key) < 0)) {
+            acc->best_leaf = n;
+            acc->best_key  = n->key;
+            acc->best_dist = d;
         }
         return;
     }
-    push_rows_of_key(n->child[0], key, out);
-    push_rows_of_key(n->child[1], key, out);
+    dfs_best_under(n->left,  query, acc, out);
+    dfs_best_under(n->right, query, acc, out);
 }
 
-/* ------------------------------------------------------------------ */
-/* Search API                                                          */
-/* ------------------------------------------------------------------ */
+/* =========================
+ * Search (descent + single compare + optional closest match)
+ * ========================= */
 
 void search_patricia(patricia_tree_t *t, const char *query,
                      search_stats_t *out, int enable_edit_distance)
@@ -234,67 +277,50 @@ void search_patricia(patricia_tree_t *t, const char *query,
 
     if (!t || !t->root || !query) return;
 
-    pnode_t *cur = t->root;
-    pnode_t *last_internal = NULL;
+    /* 1) Descent along branch bits — count internals + landing leaf only */
+    pnode_t *parent = NULL;
+    pnode_t *cur    = t->root;
 
-    unsigned long long path_bits = 0ULL; /* decision bits counted while descending */
+    while (cur && !cur->is_leaf) {
+        out->node_comparisons++;              /* count this internal */
+        parent = cur;
+        int b = getBit((char*)query, cur->bitIndex);
+        cur = (b == 0) ? cur->left : cur->right;
+    }
+    if (cur) out->node_comparisons++;         /* count landing leaf */
 
-    enum { OUTCOME_UNKNOWN, OUTCOME_EXACT, OUTCOME_INTERNAL_MISMATCH, OUTCOME_LEAF_MISMATCH }
-        outcome = OUTCOME_UNKNOWN;
+    if (!cur) return; /* defensive */
 
-    for (;;) {
-        out->node_comparisons++;
-
-        /* Leaf? do the leaf equality/mismatch check (bit charging via first_diff_bit) */
-        if (cur->leaf) {
-            out->string_comparisons++;
-            unsigned int diff = first_diff_bit_msb(query, cur->leaf->key, &out->bit_comparisons);
-
-            /* remove bits we already charged along the path */
-            if (out->bit_comparisons >= path_bits) {
-                out->bit_comparisons -= path_bits;
-            } else {
-                out->bit_comparisons = 0;
-            }
-
-            out->bit_comparisons++;                 // NEW: count the decisive leaf bit (mismatch or '\0')
-
-            if (diff == UINT_MAX) {
-                for (unsigned i = 0; i < cur->leaf->count; ++i) push_result(out, cur->leaf->rows[i]);
-                outcome = OUTCOME_EXACT;
-            } else {
-                outcome = OUTCOME_LEAF_MISMATCH;
-            }
-            break;
-        }
-
-        /* Internal node: ALWAYS charge the decision bit, even if the branch is missing */
-        last_internal = cur;
-        int b = get_bit_msb((const unsigned char*)query, cur->split_bit);
-        out->bit_comparisons++;    /* count this decision bit */
-        path_bits++;               /* remember we charged it */
-        if (cur->child[b]) {
-            cur = cur->child[b];
-        } else {
-            outcome = OUTCOME_INTERNAL_MISMATCH;
-            cur = NULL;
-            break;
-        }
+    /* 2) Single string comparison at leaf; charge bits via helper */
+    out->string_comparisons++;
+    if (strcmp_bits_firstdiff(query, cur->key, &out->bit_comparisons) == 0) {
+        /* exact key found — output all duplicates in file order */
+        push_leaf_records(out, cur);
+        return;
     }
 
-    /* Exact match done (records already pushed) */
-    if (outcome == OUTCOME_EXACT) return;
-
-    /* If closest-match is off, we’re done (NOTFOUND) */
+    /* 3) Closest match (spellcheck) */
     if (!enable_edit_distance) return;
 
-    /* Choose subtree for closest-match: last internal reached (or root fallback) */
-    pnode_t *mismatch_node = last_internal ? last_internal : t->root;
+    /* Find precise mismatch bit between landing leaf and query */
+    unsigned int diff = first_diff_bit_index(cur->key, query);
+
+    /* Choose candidate subtree root:
+       - prefer exact node with bitIndex == diff
+       - else closest ancestor with bitIndex < diff (Patricia compression) */
+    pnode_t *mismatch_node = NULL;
+    if (diff != UINT_MAX) {
+        mismatch_node = find_node_for_bit_exact(t->root, cur->key, diff);
+        if (!mismatch_node)
+            mismatch_node = find_closest_ancestor_lt_bit(t->root, cur->key, diff);
+    }
+    if (!mismatch_node) mismatch_node = parent ? parent : t->root;
 
     best_accum_t acc = (best_accum_t){0};
-    collect_best_under(mismatch_node, query, &acc);
-    if (!acc.best_key) return;
+    dfs_best_under(mismatch_node, query, &acc, out);   /* NOTE: does NOT change n */
 
-    /* Push all rows for chosen key */
-    push_rows_of_key(mismatch_node, acc.best_key, out);
+    if (acc.best_leaf) {
+        push_leaf_records(out, acc.best_leaf);
+        /* s already 1; b already charged; n unchanged during DFS by design. */
+    }
 }

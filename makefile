@@ -1,40 +1,38 @@
-# Makefile (minimal, clean)
-
 CC      := gcc
 CFLAGS  := -Wall -Wextra -std=c99 -O2 -Iinclude
-SRC     := src/bit.c src/csv.c src/list.c src/print.c src/read.c src/row.c src/search.c src/utils.c src/main.c
-SRC_P   := src/patricia.c
 
-# Separate build dirs to avoid mixing objects compiled with/without ENABLE_PATRICIA
-BUILD1  := build1
-BUILD2  := build2
+SRC_COMMON := src/bit.c src/csv.c src/list.c src/print.c src/read.c src/row.c src/search.c src/utils.c
+BUILD      := build
 
-OBJ1 := $(patsubst src/%.c,$(BUILD1)/%.o,$(SRC))
-OBJ2 := $(patsubst src/%.c,$(BUILD2)/%.o,$(SRC))
-OBJ2_P := $(BUILD2)/patricia.o
+OBJ_COMMON := $(patsubst src/%.c,$(BUILD)/%.o,$(SRC_COMMON))
+OBJ_MAIN_S1 := $(BUILD)/main.s1.o
+OBJ_MAIN_S2 := $(BUILD)/main.s2.o
+OBJ_PATRICIA := $(BUILD)/patricia.o
 
 .PHONY: all clean
 all: dict1 dict2
 
-# Stage 1 (NO Patricia)
-dict1: $(OBJ1)
+dict1: $(OBJ_COMMON) $(OBJ_MAIN_S1)
 	$(CC) $(CFLAGS) -o $@ $^
 
-$(BUILD1)/%.o: src/%.c | $(BUILD1)
+dict2: $(OBJ_COMMON) $(OBJ_MAIN_S2) $(OBJ_PATRICIA)
+	$(CC) $(CFLAGS) -o $@ $^
+
+$(BUILD)/%.o: src/%.c | $(BUILD)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OBJ_MAIN_S1): src/main.c | $(BUILD)
 	$(CC) $(CFLAGS) -UENABLE_PATRICIA -c $< -o $@
 
-# Stage 2 (WITH Patricia)
-dict2: $(OBJ2) $(OBJ2_P)
-	$(CC) $(CFLAGS) -DENABLE_PATRICIA -o $@ $^
-
-$(BUILD2)/%.o: src/%.c | $(BUILD2)
+$(OBJ_MAIN_S2): src/main.c | $(BUILD)
 	$(CC) $(CFLAGS) -DENABLE_PATRICIA -c $< -o $@
 
-$(OBJ2_P): $(SRC_P) | $(BUILD2)
+$(OBJ_PATRICIA): src/patricia.c | $(BUILD)
 	$(CC) $(CFLAGS) -DENABLE_PATRICIA -c $< -o $@
 
-$(BUILD1) $(BUILD2):
-	mkdir -p $@
+$(BUILD):
+	mkdir -p $(BUILD)
 
 clean:
-	rm -rf $(BUILD1) $(BUILD2) dict1 dict2 output.txt
+	rm -rf $(BUILD) dict1 dict2 output.txt
+

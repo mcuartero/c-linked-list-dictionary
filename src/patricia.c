@@ -235,8 +235,7 @@ static void dfs_best_under(pnode_t *n, const char *query,
 
 /* search the Patricia tree for a query string */
 void search_patricia(patricia_tree_t *t, const char *query,
-                     search_stats_t *out, int enable_edit_distance)
-{
+                     search_stats_t *out, int enable_edit_distance) {
     out->results = NULL;
     out->result_count = 0;
     out->capacity = 0;

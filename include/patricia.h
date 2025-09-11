@@ -4,6 +4,10 @@
 #include "row.h"     /* row_t */
 #include "search.h"  /* search_stats_t */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Opaque Patricia tree */
 typedef struct patricia_tree patricia_tree_t;
 
@@ -24,4 +28,7 @@ void insert_into_patricia(patricia_tree_t *t, const char *key, row_t *row);
 void search_patricia(patricia_tree_t *t, const char *query,
                      search_stats_t *out, int enable_edit_distance);
 
+#ifdef __cplusplus
+}
+#endif
 #endif /* PATRICIA_H */

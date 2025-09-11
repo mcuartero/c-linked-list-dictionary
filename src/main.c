@@ -91,7 +91,7 @@ static void run_stage2(node_t *list, FILE *fout) {
         strip_newline(q);
 
         search_stats_t st;
-        search_patricia(tree, q, &st, 1);  // spellcheck enabled
+        search_patricia(tree, q, &st);
 
         // write results to output file
         fprintf(fout, "%s\n", q);

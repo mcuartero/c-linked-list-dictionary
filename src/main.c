@@ -2,12 +2,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <time.h>
 
 #include "read.h"
 #include "list.h"
 #include "search.h"
 #include "print.h"
 #include "utils.h"
+
 
 #ifdef ENABLE_PATRICIA
 #include "patricia.h"
@@ -112,6 +114,9 @@ static void run_stage2(node_t *list, FILE *fout) {
 
 /* main: chooses stage, reads CSV, runs search, writes output */
 int main(int argc, char *argv[]) {
+    
+    clock_t start = clock();
+
     if (argc != 4) usage(argv[0]);
 
 #ifndef ENABLE_PATRICIA
@@ -157,5 +162,10 @@ int main(int argc, char *argv[]) {
 
     fclose(fout);
     free_list(list);
+
+    clock_t end = clock();
+    double cpu_time = ((double)(end - start)) / CLOCKS_PER_SEC;
+    printf("CPU Time: %f seconds\n", cpu_time);
+
     return 0;
 }
